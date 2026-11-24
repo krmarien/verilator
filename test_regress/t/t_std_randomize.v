@@ -121,6 +121,15 @@ module t_scope_std_randomize;
       if ((limit_63bits[i] < 63'd50) || (limit_63bits[i] >= 63'd100)) `stop;
     end
 
+    // An element of another array at the same index is state in the with clause
+    foreach (limit_63bits[i]) begin
+      randomize_result = std::randomize(limit_63bits[i]) with {
+        limit_63bits[i] == 63'(limit_31bits[i]) + 63'd1;
+      };
+      `checkd(randomize_result, 1);
+      if (limit_63bits[i] != 63'(limit_31bits[i]) + 63'd1) `stop;
+    end
+
     foreach (limit_95bits[i]) begin
       randomize_result = std::randomize(limit_95bits[i]) with { limit_95bits[i] >= 95'd50; limit_95bits[i] < 95'd1000;};
       `checkd(randomize_result, 1);

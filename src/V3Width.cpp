@@ -1596,8 +1596,9 @@ class WidthVisitor final : public VNVisitor {
             int frommsb;
             int fromlsb;
             const AstNodeDType* const fromDtp = nodep->fromp()->dtypep()->skipRefp();
-            const AstUnpackArrayDType* const adtypep = VN_CAST(fromDtp, UnpackArrayDType);
-            if (adtypep) {
+            int selwidth = 1;  // Width to address a bit
+            if (const AstUnpackArrayDType* const adtypep = VN_CAST(fromDtp, UnpackArrayDType)) {
+                selwidth = adtypep->indexWidth();
                 frommsb = adtypep->hi();
                 fromlsb = adtypep->lo();
                 if (fromlsb > frommsb) std::swap(frommsb, fromlsb);
@@ -1610,7 +1611,6 @@ class WidthVisitor final : public VNVisitor {
                 nodep->v3fatalSrc("Array reference exceeds dimension of array");
                 frommsb = fromlsb = 0;
             }
-            const int selwidth = adtypep ? adtypep->indexWidth() : 1;  // Width to address a bit
             AstNodeDType* const selwidthDTypep = nodep->findBitOrLogicDType(
                 selwidth, selwidth, nodep->bitp()->dtypep()->numeric(),
                 nodep->bitp()->isFourstateOrNoDtype());

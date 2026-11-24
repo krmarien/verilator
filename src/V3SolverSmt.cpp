@@ -3065,7 +3065,9 @@ public:
             = nodep ? extractConditionalDisableSofts(nodep, nullptr) : nullptr) {
             nodep->addNext(hoistListp);
         }
-        if (nodep) nodep->foreachAndNext([](AstArraySel* selp) { narrowStateIndex(selp); });
+        for (AstNode* const itemp : VNList<AstNode>{nodep}) {
+            itemp->foreach([](AstArraySel* selp) { narrowStateIndex(selp); });
+        }
         iterateAndNextNull(nodep);
     }
 };
