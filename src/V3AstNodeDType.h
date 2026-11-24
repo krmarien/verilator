@@ -1688,6 +1688,8 @@ public:
     bool isReverseOf(const AstNodeDType* otherp) const;
     // Outer dimension comes first. The first element is this node.
     std::vector<AstUnpackArrayDType*> unpackDimensions();
+    // Width V3Width gives an index once the lower bound is subtracted
+    int indexWidth() const;
     void isCompound(bool flag) { m_isCompound = flag; }
     bool isCompound() const override VL_MT_SAFE { return m_isCompound; }
     bool isIntegralOrPacked() const override { return false; }

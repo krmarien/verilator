@@ -1596,7 +1596,8 @@ class WidthVisitor final : public VNVisitor {
             int frommsb;
             int fromlsb;
             const AstNodeDType* const fromDtp = nodep->fromp()->dtypep()->skipRefp();
-            if (const AstUnpackArrayDType* const adtypep = VN_CAST(fromDtp, UnpackArrayDType)) {
+            const AstUnpackArrayDType* const adtypep = VN_CAST(fromDtp, UnpackArrayDType);
+            if (adtypep) {
                 frommsb = adtypep->hi();
                 fromlsb = adtypep->lo();
                 if (fromlsb > frommsb) std::swap(frommsb, fromlsb);
@@ -1609,7 +1610,7 @@ class WidthVisitor final : public VNVisitor {
                 nodep->v3fatalSrc("Array reference exceeds dimension of array");
                 frommsb = fromlsb = 0;
             }
-            const int selwidth = V3Number::log2b(frommsb + 1 - 1) + 1;  // Width to address a bit
+            const int selwidth = adtypep ? adtypep->indexWidth() : 1;  // Width to address a bit
             AstNodeDType* const selwidthDTypep = nodep->findBitOrLogicDType(
                 selwidth, selwidth, nodep->bitp()->dtypep()->numeric(),
                 nodep->bitp()->isFourstateOrNoDtype());
@@ -1648,8 +1649,11 @@ class WidthVisitor final : public VNVisitor {
                         }
                     }
                 }
-                widthCheckSized(nodep, "Extract Range", nodep->bitp(), selwidthDTypep, EXTEND_EXP,
-                                false /*NOWARN*/);
+                // A wider index is kept for V3Unknown's bounds check, which then narrows it
+                if (nodep->bitp()->width() < selwidth) {
+                    widthCheckSized(nodep, "Extract Range", nodep->bitp(), selwidthDTypep,
+                                    EXTEND_EXP, false /*NOWARN*/);
+                }
             }
         }
     }

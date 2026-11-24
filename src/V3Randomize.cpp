@@ -1186,10 +1186,13 @@ class RandomizeVisitor final : public VNVisitor {
                 return isSimilarNode(withASp->fromp(), argASp->fromp())
                        && withIdxp->num().isCaseEq(argIdxp->num());
             }
-            // Index must be Sel type, extract VarRef using fromp()
-            if (!VN_IS(withASp->bitp(), Sel) || !VN_IS(argASp->bitp(), Sel)) return false;
-            const AstNodeExpr* const withIdxp = VN_AS(withASp->bitp(), Sel)->fromp();
-            const AstNodeExpr* const argIdxp = VN_AS(argASp->bitp(), Sel)->fromp();
+            // A narrower index is a Sel of it
+            const auto indexp = [](const AstNodeExpr* bitp) {
+                const AstSel* const selp = VN_CAST(bitp, Sel);
+                return selp ? selp->fromp() : bitp;
+            };
+            const AstNodeExpr* const withIdxp = indexp(withASp->bitp());
+            const AstNodeExpr* const argIdxp = indexp(argASp->bitp());
             return isSimilarNode(withASp->fromp(), argASp->fromp())
                    && isSimilarNode(withIdxp, argIdxp);
         }

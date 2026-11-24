@@ -42,16 +42,36 @@ class RandDynIndexCastTest;
   }
 endclass
 
+// Index wider than the array index sort
+class RandWideIndexTest;
+  rand longint idx;
+  rand bit [7:0] data [3];
+  /* verilator lint_off WIDTHTRUNC */
+  constraint value_match {
+    idx inside {[0:2]};
+    data[idx] == 8'd42;
+  }
+  /* verilator lint_on WIDTHTRUNC */
+endclass
+
 module t;
   initial begin
     int randomize_result;
     static RandArrayIndexTest obj = new();
+    static RandWideIndexTest wobj = new();
     RandDynIndexCastTest cobj;
     repeat (20) begin
       randomize_result = obj.randomize();
       `checkd(randomize_result, 1);
       `checkd(obj.selected_value, obj.data[obj.idx]);
       `check_range(obj.selected_value, 8'd10, 8'd50)
+    end
+    repeat (20) begin
+      randomize_result = wobj.randomize();
+      `checkd(randomize_result, 1);
+      /* verilator lint_off WIDTHTRUNC */
+      `checkd(wobj.data[wobj.idx], 8'd42);
+      /* verilator lint_on WIDTHTRUNC */
     end
     cobj = new();
     repeat (20) begin

@@ -1871,6 +1871,22 @@ class ConstraintExprVisitor final : public VNVisitor {
             VL_DO_DANGLING(origp->deleteTree(), origp);
         }
     }
+    // V3Width keeps an unpacked array index wider than the array for V3Unknown's bounds check.
+    // Element names are built from the index at the array's index width, so narrow an index
+    // that does not depend on a random variable to it.
+    static void narrowStateIndex(AstArraySel* nodep) {
+        const int width
+            = VN_AS(nodep->fromp()->dtypep()->skipRefp(), UnpackArrayDType)->indexWidth();
+        AstNodeExpr* const bitp = nodep->bitp();
+        if (bitp->width() <= width) return;
+        if (bitp->exists([](const AstNodeVarRef* vrefp) {
+                return vrefp->varp()->rand().isRandomizable()
+                       || vrefp->varp()->isStdRandomizeArg();
+            })) {
+            return;
+        }
+        nodep->bitp(new AstSel{bitp->fileline(), bitp->unlinkFrBack(), 0, width});
+    }
     void renameArrayExpr(AstSFormatF* const newp) const {
         if (m_structSel) {
             newp->name("%s.%s");
@@ -1913,12 +1929,17 @@ class ConstraintExprVisitor final : public VNVisitor {
         }
         if (indexIsRand) {
             // Index depends on rand variable -- keep as SMT symbol.
-            // Array index sort is 32-bit, so zero-extend narrower indices.
+            // Array index sort is 32-bit, so zero-extend narrower indices and truncate wider
+            // ones.
             AstNodeExpr* indexp = nodep->bitp()->unlinkFrBack(&handle);
             if (indexp->width() < 32) {
                 AstExtend* const extendp = new AstExtend{fl, indexp, 32};
                 extendp->user1(true);
                 indexp = extendp;
+            } else if (indexp->width() > 32) {
+                AstSel* const selp = new AstSel{fl, indexp, 0, 32};
+                selp->user1(true);
+                indexp = selp;
             }
             handle.relink(indexp);
             AstSFormatF* const newp = editSMT(nodep, nodep->fromp(), indexp);
@@ -3044,6 +3065,7 @@ public:
             = nodep ? extractConditionalDisableSofts(nodep, nullptr) : nullptr) {
             nodep->addNext(hoistListp);
         }
+        if (nodep) nodep->foreachAndNext([](AstArraySel* selp) { narrowStateIndex(selp); });
         iterateAndNextNull(nodep);
     }
 };

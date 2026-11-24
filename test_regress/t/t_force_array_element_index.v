@@ -107,8 +107,7 @@ module sub (
     wr[idx[2:0]] = 8'hee;
   end
   assign rdwr = wr[3];
-  // A 64-bit index. V3Width truncates it to the array's index width, so this is
-  // the same element a plain read selects; WIDTHTRUNC is expected and waived.
+  // A 64-bit index, wider than the array's index; WIDTHTRUNC is expected and waived.
   /* verilator lint_off WIDTHTRUNC */
   assign rdwide = mem[wide];
   /* verilator lint_on WIDTHTRUNC */
@@ -222,16 +221,17 @@ module t;
     end
     release u.m3[1][2][3];
 
-    // A 64-bit index is truncated to the array's index width, forced or not.
+    // A 64-bit index selects the forced element, but is not truncated to it
+    // (IEEE 1800-2023 7.4.6)
     wide = 64'd9;
     #1;
     `checkh(rdwide, 8'h19)
     force u.mem[9] = 8'h5a;
     #1;
     `checkh(rdwide, 8'h5a)
-    wide = 64'h1_0000_0009;  // truncates to 9, same element
+    wide = 64'h1_0000_0009;  // Out of range, reads X
     #1;
-    `checkh(rdwide, 8'h5a)
+    if (rdwide === 8'h5a) $stop;
     release u.mem[9];
 
     // An array indexed by itself: the inner read is an ordinary read, so forcing

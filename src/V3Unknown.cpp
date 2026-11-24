@@ -461,7 +461,7 @@ class UnknownVisitor final : public VNVisitor {
     // visit(AstSliceSel) not needed as its bounds are constant and checked
     // in V3Width.
 
-    void visit(AstArraySel* nodep) override {
+    void addArraySelBound(AstArraySel* nodep) {
         iterateChildren(nodep);
         if (!nodep->user1SetOnce()) {
             UINFOTREE(9, nodep, "", "in");
@@ -553,6 +553,16 @@ class UnknownVisitor final : public VNVisitor {
             } else {  // lvalue
                 replaceBoundLvalue(nodep, condp);
             }
+        }
+    }
+    void visit(AstArraySel* nodep) override {
+        addArraySelBound(nodep);
+        // The index is in range once bounded, so narrow it to the width V3Width checked
+        const int width
+            = VN_AS(nodep->fromp()->dtypep()->skipRefp(), UnpackArrayDType)->indexWidth();
+        if (nodep->bitp()->width() > width) {
+            AstNodeExpr* const bitp = nodep->bitp()->unlinkFrBack();
+            nodep->bitp(V3Const::constifyEdit(new AstSel{bitp->fileline(), bitp, 0, width}));
         }
     }
     //--------------------

@@ -4523,6 +4523,14 @@ void AstUnpackArrayDType::dumpJson(std::ostream& str) const {
     dumpJsonBoolFuncIf(str, isCompound);
     dumpJsonGen(str);
 }
+int AstUnpackArrayDType::indexWidth() const {
+    int msb = hi();
+    int lsb = lo();
+    if (lsb > msb) std::swap(msb, lsb);
+    // If the lsb<0 we may go negative, so need more bits
+    if (lsb < 0) msb += -lsb;
+    return V3Number::log2b(msb) + 1;
+}
 bool AstUnpackArrayDType::isReverseOf(const AstNodeDType* otherp) const {
     bool reversed = false;
     const AstUnpackArrayDType* thisp = this;
