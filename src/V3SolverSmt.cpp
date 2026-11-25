@@ -3144,6 +3144,13 @@ class SolverSmtLowering final : public V3SolverLowering {
         taskp->classMethod(true);
         classp->addMembersp(taskp);
         m_memberMap.insert(classp, taskp);
+        // Inherited constraints were lowered with the base class, so also prepare its arrays
+        if (AstClass* const basep = classp->extendsp() ? classp->extendsp()->classp() : nullptr) {
+            AstTask* const baseTaskp = VN_CAST(m_memberMap.findMember(basep, name), Task);
+            if (baseTaskp && baseTaskp->stmtsp()) {
+                taskp->addStmtsp(baseTaskp->stmtsp()->cloneTree(true));
+            }
+        }
         return taskp;
     }
     AstTask* getCreateAggrResizeTask(AstClass* const classp) {
