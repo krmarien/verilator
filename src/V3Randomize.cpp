@@ -282,7 +282,11 @@ class RandomizeMarkVisitor final : public VNVisitor {
                     }
                     if (classRefp) {
                         AstClass* const rclassp = classRefp->classp();
-                        if (!rclassp->user1()) {
+                        // Also when randomize() is called on it directly, so it is global
+                        // regardless of the order randomize() calls are seen in. A member of
+                        // the containing class's own type is unsupported.
+                        if (!rclassp->user1()
+                            || (rclassp->user1() == IS_RANDOMIZED && rclassp != nodep)) {
                             rclassp->user1(IS_RANDOMIZED_GLOBAL);
                             markGlobalConstrainedVars(rclassp);
                             markMembers(rclassp);
