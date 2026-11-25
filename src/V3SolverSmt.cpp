@@ -3056,6 +3056,7 @@ class SolverSmtLowering final : public V3SolverLowering {
     int m_distNum = 0;  // Dist bucket variable counter within a class for var naming
     std::set<std::string> m_writtenVars;  // Track write_var calls per class to avoid duplicates
     std::map<AstClass*, VInsertionSet<AstVar*>> m_sizeConstrainedArrays;  // Per-class arrays
+    std::map<AstClass*, VInsertionSet<AstVar*>> m_sizedArrays;  // Per-class arrays of solved size
     uint32_t m_uniqueConstraintId = 0;  // current ID of unique call
 
     // METHODS
@@ -3976,7 +3977,21 @@ class SolverSmtLowering final : public V3SolverLowering {
         return callp;
     }
 
-    AstVar* addSizeSolvep(AstFunc* const randomizep, AstVar* const genp,
+    // A disabled array keeps its current size. Pin the size proxy of each size-constrained
+    // array, of classp, its base classes, and in arrays, before solving so an incompatible
+    // size constraint fails instead of resizing the frozen array.
+    void addFrozenSizePins(AstClass* classp, VInsertionSet<AstVar*> arrays,
+                           AstFunc* const randomizep, AstVar* const genp,
+                           AstVar* const randModeVarp) {
+        for (; classp; classp = classp->extendsp() ? classp->extendsp()->classp() : nullptr) {
+            const auto it = m_sizedArrays.find(classp);
+            if (it != m_sizedArrays.end()) arrays.insert(it->second.begin(), it->second.end());
+        }
+        for (AstVar* const arrVarp : arrays) {
+            addFrozenSizePin(randomizep->fileline(), arrVarp, randomizep, genp, randModeVarp);
+        }
+    }
+    AstVar* addSizeSolvep(AstClass* const classp, AstFunc* const randomizep, AstVar* const genp,
                           AstVar* const randModeVarp,
                           const VInsertionSet<AstVar*>& sizeArrayVars) {
         FileLine* const fl = randomizep->fileline();
@@ -3984,11 +3999,7 @@ class SolverSmtLowering final : public V3SolverLowering {
                                               randomizep->findBasicDType(VBasicDTypeKwd::BIT)};
         sizeOkVarp->funcLocal(true);
         randomizep->addDeclsp(sizeOkVarp);
-        // A disabled array keeps its current size. Pin its size proxy before solving so
-        // an incompatible size constraint fails instead of resizing the frozen array.
-        for (AstVar* const arrVarp : sizeArrayVars) {
-            addFrozenSizePin(fl, arrVarp, randomizep, genp, randModeVarp);
-        }
+        addFrozenSizePins(classp, sizeArrayVars, randomizep, genp, randModeVarp);
         randomizep->addStmtsp(new AstAssign{fl, new AstVarRef{fl, sizeOkVarp, VAccess::WRITE},
                                             newSolverCallp(genp)});
         return sizeOkVarp;
@@ -4038,6 +4049,7 @@ public:
             bool wasCreated = false;
             AstVar* const sizeVarp
                 = createOrGetSizeVar(classp, queueVarp, fl, nodep->findIntDType(), wasCreated);
+            m_sizedArrays[classp].insert(queueVarp);
             if (wasCreated) {
                 // Associative arrays have no resize(); only generate resize
                 // for dynamic arrays and queues
@@ -4181,7 +4193,7 @@ public:
 
             if (!sizeArrayVars.empty()) {
                 AstVar* const sizeOkVarp
-                    = addSizeSolvep(randomizep, genp, randModeVarp, sizeArrayVars);
+                    = addSizeSolvep(nodep, randomizep, genp, randModeVarp, sizeArrayVars);
                 if (AstTask* const resizeAllTaskp
                     = VN_AS(m_memberMap.findMember(nodep, "__Vresize_constrained_arrays"), Task)) {
                     randomizep->addStmtsp(
@@ -4201,6 +4213,7 @@ public:
                 beginValp = new AstAnd{fl, new AstVarRef{fl, sizeOkVarp, VAccess::READ},
                                        new AstVarRef{fl, finalOkVarp, VAccess::READ}};
             } else {
+                addFrozenSizePins(nodep, {}, randomizep, genp, randModeVarp);
                 beginValp = newSolverCallp(genp);
             }
             if (randModeVarp) {
@@ -4408,7 +4421,7 @@ public:
 
             // First pass: solve to determine sizes
             AstVar* const sizeOkVarp
-                = addSizeSolvep(randomizeFuncp, localGenp, randModeVarp, allSizeArrays);
+                = addSizeSolvep(classp, randomizeFuncp, localGenp, randModeVarp, allSizeArrays);
 
             // Resize constrained arrays before rebuilding constraints: both any
             // class-wide resize task (class-level size constraints) and this
@@ -4547,6 +4560,7 @@ public:
         } else {
             VL_DO_DANGLING(capturedClonep->deleteTree(), capturedClonep);
 
+            addFrozenSizePins(classp, {}, randomizeFuncp, localGenp, randModeVarp);
             // Call the solver and set return value
             AstCExpr* const solverCallp = newSolverCallp(localGenp);
             randomizeFuncp->addStmtsp(
