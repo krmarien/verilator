@@ -40,6 +40,7 @@ endclass
 
 module t;
   initial begin
+    automatic Mid mid = new;
     automatic Top top = new;
     automatic Leaf leaf = new;
     automatic bit outside;
@@ -49,6 +50,19 @@ module t;
     `checkd(ok, 1);
     `checkd(top.leaf.x inside {[1 : 9]}, 1'b1);
     `checkd(top.mid.leaf.x inside {[1 : 9]}, 1'b1);
+
+    // Mid holds copies of the constraints of Leaf, as does Top through Mid
+    mid.leaf.c_x.constraint_mode(0);
+    outside = 0;
+    repeat (20) begin
+      ok = mid.randomize();
+      `checkd(ok, 1);
+      `checkd(mid.leaf.y, 5);
+      if (!(mid.leaf.x inside {[1 : 9]})) outside = 1;
+    end
+    `checkd(outside, 1'b1);
+
+    mid.leaf.c_x.constraint_mode(1);
 
     // A disabled constraint of a member, and of a member's member
     top.leaf.c_x.constraint_mode(0);
