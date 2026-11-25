@@ -3846,7 +3846,8 @@ class SolverSmtLowering final : public V3SolverLowering {
 
     static bool isDynArrOfClassTypeRecurse(const AstNodeDType* const dtypep) {
         const AstNodeDType* const refp = dtypep->skipRefp();
-        if (VN_IS(refp, DynArrayDType) || VN_IS(refp, QueueDType)) {
+        if (VN_IS(refp, DynArrayDType) || VN_IS(refp, QueueDType)
+            || VN_IS(refp, AssocArrayDType)) {
             return isDynArrOfClassTypeRecurse(refp->subDTypep());
         } else if (VN_IS(refp, ClassRefDType)) {
             return true;
@@ -3924,11 +3925,8 @@ class SolverSmtLowering final : public V3SolverLowering {
         AstNodeModule* const arrClassp = VN_AS(arrVarp->user2p(), NodeModule);
         AstNodeModule* const sizeClassp = VN_AS(sizeVarp->user2p(), NodeModule);
         AstVarRef* const sizeWritep = new AstVarRef{fl, sizeClassp, sizeVarp, VAccess::WRITE};
-        const VCMethod sizeMethod = VN_IS(arrVarp->dtypep()->skipRefp(), AssocArrayDType)
-                                        ? VCMethod::ASSOC_SIZE
-                                        : VCMethod::DYN_SIZE;
         AstCMethodHard* const currentSizep = new AstCMethodHard{
-            fl, new AstVarRef{fl, arrClassp, arrVarp, VAccess::READ}, sizeMethod};
+            fl, new AstVarRef{fl, arrClassp, arrVarp, VAccess::READ}, VCMethod::DYN_SIZE};
         currentSizep->dtypep(sizeVarp->dtypep());
         randomizep->addStmtsp(new AstAssign{fl, sizeWritep, currentSizep});
         AstNodeExpr* const modep = newModeBitRead(arrVarp, nullptr, randModeVarp, fl);
@@ -4023,11 +4021,11 @@ public:
     }
     void lowerConstraintMethod(AstNodeModule* modp, AstConstraint* constrp,
                                AstCMethodHard* nodep) override {
-        // Replace '.size()' of a constrained array with a solver size variable
+        // Replace '.size()' of a constrained array with a solver size variable. The size of an
+        // associative array is not randomized, so is state (IEEE 1800-2023 18.4).
         FileLine* const fl = nodep->fileline();
         if (nodep->fromp()->user1() && !SmtUtil::isSolveBeforeItem(nodep)
-            && (nodep->method() == VCMethod::ASSOC_SIZE
-                || nodep->method() == VCMethod::DYN_SIZE)) {
+            && nodep->method() == VCMethod::DYN_SIZE) {
             AstClass* const classp = VN_AS(modp, Class);
             AstVarRef* const queueVarRefp = VN_CAST(nodep->fromp(), VarRef);
             if (!queueVarRefp) {
@@ -4039,21 +4037,17 @@ public:
             AstVar* const sizeVarp
                 = createOrGetSizeVar(classp, queueVarp, fl, nodep->findIntDType(), wasCreated);
             if (wasCreated) {
-                // Associative arrays have no resize(); only generate resize
-                // for dynamic arrays and queues
-                if (!VN_IS(queueVarp->dtypep()->skipRefp(), AssocArrayDType)) {
-                    AstTask* resizerTaskp = VN_AS(constrp->user3p(), Task);
-                    if (!resizerTaskp) {
-                        resizerTaskp = newResizeConstrainedArrayTask(classp, constrp->name());
-                        constrp->user3p(resizerTaskp);
-                    }
-                    AstVarRef* const sizeVarRefp = new AstVarRef{
-                        fl, VN_AS(sizeVarp->user2p(), NodeModule), sizeVarp, VAccess::READ};
-                    AstCMethodHard* const resizep = new AstCMethodHard{
-                        fl, nodep->fromp()->unlinkFrBack(), VCMethod::DYN_RESIZE, sizeVarRefp};
-                    resizep->dtypep(nodep->findVoidDType());
-                    resizerTaskp->addStmtsp(new AstStmtExpr{fl, resizep});
+                AstTask* resizerTaskp = VN_AS(constrp->user3p(), Task);
+                if (!resizerTaskp) {
+                    resizerTaskp = newResizeConstrainedArrayTask(classp, constrp->name());
+                    constrp->user3p(resizerTaskp);
                 }
+                AstVarRef* const sizeVarRefp = new AstVarRef{
+                    fl, VN_AS(sizeVarp->user2p(), NodeModule), sizeVarp, VAccess::READ};
+                AstCMethodHard* const resizep = new AstCMethodHard{
+                    fl, nodep->fromp()->unlinkFrBack(), VCMethod::DYN_RESIZE, sizeVarRefp};
+                resizep->dtypep(nodep->findVoidDType());
+                resizerTaskp->addStmtsp(new AstStmtExpr{fl, resizep});
 
                 // Since size variable is signed int, we need additional constraint
                 // to make sure it is always >= 0.
@@ -4155,6 +4149,14 @@ public:
                         = parentClassp->extendsp() ? parentClassp->extendsp()->classp() : nullptr;
                 }
             }
+            // The solver records the keys of an associative array when it is registered, so
+            // register its current keys. Elements of class type are registered separately.
+            nodep->foreachMember([&](AstClass*, AstVar* varp) {
+                if (varp->user3() && VN_IS(varp->dtypep()->skipRefp(), AssocArrayDType)
+                    && !isDynArrOfClassTypeRecurse(varp->dtypep())) {
+                    addArrayElemRefresh(fl, varp, randomizep, genp);
+                }
+            });
             randomizep->addStmtsp(implementConstraintsClear(fl, genp));
 
             const auto sizeArraysIt = m_sizeConstrainedArrays.find(nodep);
