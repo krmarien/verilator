@@ -1047,6 +1047,8 @@ class AstConstraint final : public AstNode {
     // Constraint
     // @astgen op1 := itemsp : List[AstNodeConstraintItem]
     // @astgen op2 := classOrPackagep : Optional[AstNode<AstClassOrPackageRef|AstDot>]
+    // @astgen op3 := globalFromp : Optional[AstNodeExpr]  // Object of globalOrigp
+    // @astgen ptr := m_globalOrigp : Optional[AstConstraint]  // Original of a global constraint
     string m_name;  // Name of constraint
     VBaseOverride m_baseOverride;  // BaseOverride (inital/final/extends)
     bool m_isExternDef = false;  // Extern prototype definition
@@ -1079,6 +1081,9 @@ public:
     bool isKwdPure() const { return m_isKwdPure; }
     void isStatic(bool flag) { m_isStatic = flag; }
     bool isStatic() const { return m_isStatic; }
+    // A copy of a constraint of a rand class member object, globalFromp, in its container
+    AstConstraint* globalOrigp() const { return m_globalOrigp; }
+    void globalOrigp(AstConstraint* nodep) { m_globalOrigp = nodep; }
 };
 class AstCoverBin final : public AstNode {
     // Captures data for a coverpoint 'bins' declaration

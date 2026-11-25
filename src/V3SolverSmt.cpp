@@ -3181,10 +3181,37 @@ class SolverSmtLowering final : public V3SolverLowering {
     }
     AstNodeStmt* wrapIfConstraintMode(AstClass* classp, AstConstraint* const constrp,
                                       AstNodeStmt* stmtp) {
-        const RandomizeMode rmode = {.asUQuad = constrp->user1()};
-        AstVar* const modeVarp = constrp->isStatic() ? getStaticConstraintModeVar(classp)
-                                                     : getConstraintModeVar(classp);
-        return RandModeVars::wrapIfMode(rmode, modeVarp, stmtp);
+        AstConstraint* const origp = constrp->globalOrigp();
+        if (!origp) {
+            const RandomizeMode rmode = {.asUQuad = constrp->user1()};
+            AstVar* const modeVarp = constrp->isStatic() ? getStaticConstraintModeVar(classp)
+                                                         : getConstraintModeVar(classp);
+            return RandModeVars::wrapIfMode(rmode, modeVarp, stmtp);
+        }
+        // A copy of a member object's constraint has the mode of the original in that object
+        AstNodeExpr* const fromp = constrp->globalFromp()->unlinkFrBack();
+        constrp->globalOrigp(nullptr);
+        const RandomizeMode rmode = {.asUQuad = origp->user1()};
+        if (!rmode.usesMode) {
+            VL_DO_DANGLING(pushDeletep(fromp), fromp);
+            return stmtp;
+        }
+        AstClass* const origClassp = VN_AS(origp->aboveLoopp(), Class);
+        FileLine* const fl = stmtp->fileline();
+        AstNodeExpr* modep;
+        if (origp->isStatic()) {
+            VL_DO_DANGLING(pushDeletep(fromp), fromp);
+            AstVar* const modeVarp = getStaticConstraintModeVar(origClassp);
+            modep = new AstVarRef{fl, VN_AS(modeVarp->user2p(), NodeModule), modeVarp,
+                                  VAccess::READ};
+        } else {
+            modep = new AstMemberRef{fl, fromp, getConstraintModeVar(origClassp)};
+        }
+        modep->dtypeFrom(getConstraintModeVar(origClassp));
+        AstCMethodHard* const atp
+            = new AstCMethodHard{fl, modep, VCMethod::ARRAY_AT, new AstConst{fl, rmode.index}};
+        atp->dtypeSetUInt32();
+        return new AstIf{fl, atp, stmtp};
     }
     AstTask* newSetupConstraintTask(AstClass* const nodep, const std::string& name) {
         AstTask* const taskp = new AstTask{nodep->fileline(), name + "_setup_constraint"};

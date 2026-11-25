@@ -358,6 +358,8 @@ class RandomizeMarkVisitor final : public VNVisitor {
         }
 
         const std::string newName = pathPrefix + GLOBAL_CONSTRAINT_SEPARATOR + constrp->name();
+        // A copy of a nested member's constraint, also copied from that member directly
+        if (constrp->globalOrigp()) return;
 
         // Check if this constraint already exists in the target class
         bool isDuplicate = false;
@@ -410,6 +412,8 @@ class RandomizeMarkVisitor final : public VNVisitor {
         targetClassp->addMembersp(cloneConstrp);
         // Immediately iterate to set user1 marks
         iterateConst(cloneConstrp);
+        cloneConstrp->globalOrigp(constrp);
+        cloneConstrp->globalFromp(buildMemberRefChain(rootVarRefp, newPath));
     }
 
     // Clone constraints from nested rand class members.
@@ -1307,6 +1311,8 @@ class RandomizeVisitor final : public VNVisitor {
                 // index overlap. If the index > 0, it's already been set.
                 if (AstConstraint* const constrp = VN_CAST(memberp, Constraint)) {
                     hasConstraints = true;
+                    // A copy has the mode of its original
+                    if (constrp->globalOrigp()) return;
                     RandomizeMode constraintMode = {.asUQuad = memberp->user1()};
                     if (!constraintMode.usesMode) return;
                     if (constraintMode.index == 0) {
